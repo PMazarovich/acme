@@ -1,8 +1,7 @@
 # birthday/views.py
-from django.core.paginator import Paginator
-from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.urls import reverse_lazy
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
+from django.views.generic import ListView, CreateView, DeleteView, DetailView, UpdateView
 
 from .forms import BirthdayForm
 from .models import Birthday
@@ -86,7 +85,7 @@ from .utils import calculate_birthday_countdown
 #     return render(request, 'birthday/birthday.html', context)
 
 
-class BirthdayListView(ListView):
+class BirthdayListView(LoginRequiredMixin, ListView):
     model = Birthday
     ordering = 'id'
     paginate_by = 10
@@ -101,10 +100,22 @@ class BirthdayFormMixin:
     form_class = BirthdayForm
     template_name = 'birthday/birthday.html'
 
+# Класс UserPassesTestMixin унаследован от AccessMixin,
+# который по умолчанию переадресует анонимных пользователей на страницу логина.
+# Поэтому при использовании UserPassesTestMixin миксин LoginRequiredMixin можно не использовать
+class OnlyAuthorMixin(UserPassesTestMixin):
 
-class BirthdayCreateView(BirthdayMixin, BirthdayFormMixin, CreateView):
-    pass
-    # # Указываем модель, с которой работает CBV...
+    def test_func(self):
+        object = self.get_object()
+        return object.author == self.request.user
+
+
+class BirthdayCreateView(LoginRequiredMixin, BirthdayMixin, BirthdayFormMixin, CreateView):
+    def form_valid(self, form):  # If the form is valid, save the associated model.
+        form.instance.author = self.request.user
+        # Продолжить валидацию, описанную в форме.
+        return super().form_valid(form)
+        # # Указываем модель, с которой работает CBV...
     # model = Birthday
     # # Указываем имя формы:
     # form_class = BirthdayForm
@@ -119,21 +130,33 @@ class BirthdayCreateView(BirthdayMixin, BirthdayFormMixin, CreateView):
     # success_url = reverse_lazy('birthday:list')
 
 
-class BirthdayUpdateView(BirthdayMixin, CreateView, BirthdayFormMixin):
-    pass
+class BirthdayUpdateView(OnlyAuthorMixin, UpdateView):
+    model = Birthday
+    form_class = BirthdayForm
+    template_name = 'birthday/birthday.html'
+
+    # Определяем метод test_func() для миксина UserPassesTestMixin:
+    def test_func(self):  # этот self пришел из UserPassesTestMixin, т.к. test_func переопределяется оттуда
+        # Получаем текущий объект.
+        object = self.get_object()
+        # Метод вернёт True или False.
+        # Если пользователь - автор объекта, то тест будет пройден.
+        # Если нет, то будет вызвана ошибка 403.
+        return object.author == self.request.user
 
 
-class BirthdayDeleteView(BirthdayMixin, DeleteView):
+class BirthdayDeleteView(OnlyAuthorMixin, BirthdayMixin, DeleteView):
+    template_name = 'birthday/birthday_confirm_delete.html'
     pass
     # model = Birthday
-    # template_name = 'birthday/birthday_confirm_delete.html'
     # success_url = reverse_lazy('birthday:list')
 
 
 # birthday/views.py
-class BirthdayDetailView(DetailView):
+class BirthdayDetailView(LoginRequiredMixin, DetailView):
     model = Birthday
     template_name_suffix = '_detail'
+
     # Модифицируем контекстные данные для html формы
     def get_context_data(self, **kwargs):
         # Получаем словарь контекста:

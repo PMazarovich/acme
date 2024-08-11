@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User
 from django.db import models
 # birthday/models.py
 from django.db import models
@@ -13,6 +14,9 @@ class Birthday(models.Model):
     # Валидатор указывается в описании поля.
     birthday = models.DateField('Дата рождения', validators=(real_age,))
     image = models.ImageField('Фото', blank=True, upload_to="birthdays_images")
+    author = models.ForeignKey(
+        User, verbose_name='Автор записи', on_delete=models.CASCADE, null=True
+    )
     class Meta:
         # совокупность значений полей «Имя», «Фамилия» и «Дата рождения» не должна повторяться в БД.
         constraints = (
