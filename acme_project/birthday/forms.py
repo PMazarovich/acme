@@ -24,7 +24,7 @@ from .validators import real_age
 from django import forms
 
 # Импортируем класс модели Birthday.
-from .models import Birthday
+from .models import Birthday, Congratulation
 
 BEATLES = {'Джон Леннон', 'Пол Маккартни', 'Джордж Харрисон', 'Ринго Старр'}
 
@@ -68,3 +68,10 @@ class BirthdayForm(forms.ModelForm):
     #     # Разбиваем полученную строку по пробелам
     #     # и возвращаем только первое имя.
     #     return first_name.split()[0]
+
+
+class CongratulationForm(forms.ModelForm):
+
+    class Meta:
+        model = Congratulation
+        fields = ('text',)

@@ -1,9 +1,11 @@
 # birthday/views.py
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.views.generic import ListView, CreateView, DeleteView, DetailView, UpdateView
 
-from .forms import BirthdayForm
+from .forms import BirthdayForm, CongratulationForm
 from .models import Birthday
 # Импортируем из utils.py функцию для подсчёта дней.
 from .utils import calculate_birthday_countdown
@@ -89,6 +91,11 @@ class BirthdayListView(LoginRequiredMixin, ListView):
     model = Birthday
     ordering = 'id'
     paginate_by = 10
+    # МНОГИЕ КО МНОГИМ ДЕЛАТЬ ЧЕРЕЗ PREFETCH_RELATED
+    # ОДИН КО МНОГИМ ЧЕРЕЗ SELECT RELATED
+    queryset = Birthday.objects.prefetch_related(
+        'tags'
+    ).select_related('author')
 
 
 class BirthdayMixin:
@@ -99,6 +106,7 @@ class BirthdayMixin:
 class BirthdayFormMixin:
     form_class = BirthdayForm
     template_name = 'birthday/birthday.html'
+
 
 # Класс UserPassesTestMixin унаследован от AccessMixin,
 # который по умолчанию переадресует анонимных пользователей на страницу логина.
@@ -152,19 +160,41 @@ class BirthdayDeleteView(OnlyAuthorMixin, BirthdayMixin, DeleteView):
     # success_url = reverse_lazy('birthday:list')
 
 
-# birthday/views.py
-class BirthdayDetailView(LoginRequiredMixin, DetailView):
+class BirthdayDetailView(DetailView):
     model = Birthday
-    template_name_suffix = '_detail'
 
-    # Модифицируем контекстные данные для html формы
     def get_context_data(self, **kwargs):
-        # Получаем словарь контекста:
         context = super().get_context_data(**kwargs)
-        # Добавляем в словарь новый ключ:
         context['birthday_countdown'] = calculate_birthday_countdown(
-            # Дату рождения берём из объекта в словаре context:
             self.object.birthday
         )
-        # Возвращаем словарь контекста.
+        # Записываем в переменную form пустой объект формы.
+        context['form'] = CongratulationForm()
+        # Запрашиваем все поздравления для выбранного дня рождения.
+        context['congratulations'] = (
+            # Дополнительно подгружаем авторов комментариев,
+            # чтобы избежать множества запросов к БД.
+            self.object.congratulations.select_related('author')
+        )
         return context
+
+    # Будут обработаны POST-запросы только от залогиненных пользователей.
+
+
+@login_required
+def add_comment(request, pk):
+    # Получаем объект дня рождения или выбрасываем 404 ошибку.
+    birthday = get_object_or_404(Birthday, pk=pk)
+    # Функция должна обрабатывать только POST-запросы.
+    form = CongratulationForm(request.POST)
+    if form.is_valid():
+        # Создаём объект поздравления, но не сохраняем его в БД.
+        congratulation = form.save(commit=False)
+        # В поле author передаём объект автора поздравления.
+        congratulation.author = request.user
+        # В поле birthday передаём объект дня рождения.
+        congratulation.birthday = birthday
+        # Сохраняем объект в БД.
+        congratulation.save()
+    # Перенаправляем пользователя назад, на страницу дня рождения.
+    return redirect('birthday:detail', pk=pk)
